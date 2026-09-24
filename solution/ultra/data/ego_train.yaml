@@ -1,0 +1,19 @@
+# Ultralytics dataset: train on train, validate on val. Absolute path on purpose (resource/data/dataset.yaml's
+# relative `path: ../data` is resolved against Ultralytics' datasets_dir, not the yaml location).
+path: /home/zhangyuming/Egoobjection/resource/data
+train: images/train
+val: images/val
+test: images/test
+
+nc: 10
+names:
+  0: pillow
+  1: box
+  2: book
+  3: bottle
+  4: chair
+  5: mug
+  6: door
+  7: shelf
+  8: plate
+  9: sofa

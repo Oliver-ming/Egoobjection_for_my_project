@@ -1,0 +1,21 @@
+# Ultralytics dataset for the final model: train on train+val. `val` stays images/val only so per-epoch metrics
+# still print, but they are optimistic (val is in the training set) and must not be used for model selection.
+path: /home/zhangyuming/Egoobjection/resource/data
+train:
+  - images/train
+  - images/val
+val: images/val
+test: images/test
+
+nc: 10
+names:
+  0: pillow
+  1: box
+  2: book
+  3: bottle
+  4: chair
+  5: mug
+  6: door
+  7: shelf
+  8: plate
+  9: sofa
