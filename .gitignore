@@ -1,0 +1,17 @@
+resource/data/
+resource/mm/data_vis/
+resource/mm/work_dirs/
+solution/env
+solution/weights/
+solution/work_dirs/
+solution/data/
+solution/logs/
+solution/**/runs/
+*.pt
+*.pth
+*.onnx
+*.engine
+*.cache
+__pycache__/
+*.pyc
+submission*.csv
