@@ -1,6 +1,8 @@
-# Ultralytics dataset for the final model: train on train+val. `val` stays images/val only so per-epoch metrics
-# still print, but they are optimistic (val is in the training set) and must not be used for model selection.
-path: /home/zhangyuming/Egoobjection/resource/data
+# Ultralytics dataset for the final model: train on train+val.
+# `val` stays images/val only so per-epoch metrics still print, but they are optimistic
+# (val is in the training set) and must not be used for model selection.
+# Uses clipped YOLO labels under solution/data/yolo (see docs/data_check.md).
+path: /home/zhangyuming/Egoobjection/solution/data/yolo
 train:
   - images/train
   - images/val

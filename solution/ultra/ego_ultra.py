@@ -4,7 +4,8 @@ Importing this module (before any other ultralytics import) does three things:
   * forces YOLO_AUTOINSTALL=False,
   * points Ultralytics' WEIGHTS_DIR (AMP-check yolo26n.pt download) at solution/weights instead of <cwd>/weights,
   * redirects the label `*.cache` files and `cache='disk'` `*.npy` files, which Ultralytics writes next to the
-    labels/images, from resource/data into work_dirs/ultra/_cache (resource/ is read-only for us).
+    labels/images, from resource/data and solution/data/yolo into work_dirs/ultra/_cache
+    (resource/ is read-only; train vs trainval would otherwise thrash the same labels/train.cache).
 The trainer subclasses below are importable by reference, so DDP worker processes (which unpickle the trainer class)
 import this module and get the same patches.
 """
@@ -19,6 +20,7 @@ os.environ["YOLO_AUTOINSTALL"] = "False"
 
 SOLUTION = Path(__file__).resolve().parents[1]
 DATA_ROOT = Path("/home/zhangyuming/Egoobjection/resource/data").resolve()
+YOLO_DATA = (SOLUTION / "data" / "yolo").resolve()  # clipped labels; images are symlinks into DATA_ROOT
 WEIGHTS = SOLUTION / "weights"
 WORK = SOLUTION / "work_dirs" / "ultra"
 CACHE = WORK / "_cache"
@@ -35,8 +37,10 @@ from ultralytics.nn.tasks import RTDETRDetectionModel  # noqa: E402
 ultralytics.utils.WEIGHTS_DIR = WEIGHTS
 
 
-def _in_data_root(p: str | Path) -> bool:
-    return Path(p).resolve().is_relative_to(DATA_ROOT)
+def _needs_cache_redirect(p: str | Path) -> bool:
+    """Redirect caches out of resource/ and out of solution/data/yolo (train vs trainval share labels/train)."""
+    r = Path(p).resolve()
+    return r.is_relative_to(DATA_ROOT) or r.is_relative_to(YOLO_DATA)
 
 
 _orig_load_or_scan_cache = YOLODataset._load_or_scan_cache
@@ -44,7 +48,7 @@ _orig_load_or_scan_cache = YOLODataset._load_or_scan_cache
 
 def _load_or_scan_cache(self, cache_path, cache_hash):
     cache_path = Path(cache_path)
-    if _in_data_root(cache_path):
+    if _needs_cache_redirect(cache_path):
         CACHE.mkdir(parents=True, exist_ok=True)
         # the hash in the name keeps train-only and train+val caches (same labels/train parent) from thrashing
         cache_path = CACHE / f"{cache_path.parent.name}_{cache_path.stem}_{cache_hash[:12]}.cache"
@@ -58,7 +62,8 @@ def _check_cache_disk(self, *args, **kwargs):
     npy = []
     for f in self.im_files:
         f = Path(f)
-        if _in_data_root(f):
+        # resolve() follows image symlinks into resource/; also catch YOLO_DATA paths
+        if _needs_cache_redirect(f):
             d = CACHE / "npy" / f.parent.name
             d.mkdir(parents=True, exist_ok=True)
             npy.append(d / f"{f.stem}.npy")

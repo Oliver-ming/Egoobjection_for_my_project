@@ -137,7 +137,8 @@ def main():
     ap.add_argument("--project", default=str(E.WORK))
     ap.add_argument("--bench-iters", type=int, default=0, help="benchmark N iterations then exit (single GPU)")
     ap.add_argument("overrides", nargs="*", help="extra key=value passed to model.train")
-    args = ap.parse_args()
+    # allow `script.sh --bench-iters 20 cache=False` even when the shell injects key=value before "$@"
+    args = ap.parse_intermixed_args()
     E.require_cuda_visible_devices()
 
     model = E.load_model(args.model)
