@@ -18,12 +18,27 @@ DATA_DIR=/home/zhangyuming/Egoobjection/resource/data
 case "$ANN" in
     val|test) ANN="$DATA_DIR/$ANN.json" ;;
 esac
+
+# CocoDataset joins a relative ann_file with data_root; absolute paths avoid that.
+# Same for outfile_prefix / config / checkpoint so callers may pass relative paths.
+abs_path() {
+    local p=$1
+    local dir base
+    dir=$(dirname "$p")
+    base=$(basename "$p")
+    mkdir -p "$dir"
+    echo "$(cd "$dir" && pwd)/$base"
+}
+ANN="$(abs_path "$ANN")"
+OUT_PREFIX="$(abs_path "$OUT_PREFIX")"
+CONFIG="$(abs_path "$CONFIG")"
+CHECKPOINT="$(abs_path "$CHECKPOINT")"
+
 if "$PY" -c "import json,sys; sys.exit(0 if json.load(open(sys.argv[1])).get('annotations') else 1)" "$ANN"; then
     FORMAT_ONLY=False
 else
     FORMAT_ONLY=True
 fi
-mkdir -p "$(dirname "$OUT_PREFIX")"
 
 bash "$SOLUTION_DIR/mmdet/tools/dist_test.sh" "$CONFIG" "$CHECKPOINT" "$GPUS" \
     --work-dir "$(dirname "$OUT_PREFIX")" \
