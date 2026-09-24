@@ -1,0 +1,123 @@
+{
+  "models": [
+    {
+      "name": "Co-DINO Swin-L",
+      "framework": "mmdet",
+      "config": "/home/zhangyuming/Egoobjection/solution/mmdet/configs/codino_swinl_ego.py",
+      "model_type": "CoDETR",
+      "total": 234807819,
+      "trainable": 234807819,
+      "total_M": 234.808,
+      "trainable_M": 234.808,
+      "eval_module": "detr",
+      "inference_note": "At test time Co-DINO uses eval_module='detr' (query/DETR head only). Auxiliary ATSS and RPN+RoI heads are training-only.",
+      "inference": {
+        "modules": [
+          "backbone",
+          "query_head",
+          "neck"
+        ],
+        "total": 219042966,
+        "total_M": 219.043,
+        "per_module_M": {
+          "backbone": 195.201,
+          "query_head": 19.563,
+          "neck": 4.279
+        }
+      },
+      "training_aux": {
+        "modules": [
+          "rpn_head",
+          "roi_head",
+          "bbox_head_atss"
+        ],
+        "total": 15764853,
+        "total_M": 15.765,
+        "per_module_M": {
+          "rpn_head": 0.602,
+          "roi_head": 13.948,
+          "bbox_head_atss": 1.215
+        }
+      }
+    },
+    {
+      "name": "DINO Swin-L",
+      "framework": "mmdet",
+      "config": "/home/zhangyuming/Egoobjection/solution/mmdet/configs/dino_swinl_ego.py",
+      "model_type": "DINO",
+      "total": 218188694,
+      "trainable": 218188694,
+      "total_M": 218.189,
+      "trainable_M": 218.189
+    },
+    {
+      "name": "yolo26x.pt",
+      "framework": "ultralytics",
+      "source": "/home/zhangyuming/Egoobjection/solution/weights/yolo26x.pt",
+      "nc": 80,
+      "variant": "pretrained_coco_head",
+      "total": 58993368,
+      "trainable": 58993368,
+      "total_M": 58.993,
+      "trainable_M": 58.993,
+      "trainable_note": "checkpoint tensors had requires_grad=False; trainable set equal to total"
+    },
+    {
+      "name": "yolo26x_nc10",
+      "framework": "ultralytics",
+      "source": "yaml from yolo26x.pt with nc=10",
+      "nc": 10,
+      "variant": "yaml_nc10",
+      "total": 58831668,
+      "trainable": 58831668,
+      "total_M": 58.832,
+      "trainable_M": 58.832
+    },
+    {
+      "name": "yolo11x.pt",
+      "framework": "ultralytics",
+      "source": "/home/zhangyuming/Egoobjection/solution/weights/yolo11x.pt",
+      "nc": 80,
+      "variant": "pretrained_coco_head",
+      "total": 56966176,
+      "trainable": 56966176,
+      "total_M": 56.966,
+      "trainable_M": 56.966,
+      "trainable_note": "checkpoint tensors had requires_grad=False; trainable set equal to total"
+    },
+    {
+      "name": "yolo11x_nc10",
+      "framework": "ultralytics",
+      "source": "yaml from yolo11x.pt with nc=10",
+      "nc": 10,
+      "variant": "yaml_nc10",
+      "total": 56885326,
+      "trainable": 56885310,
+      "total_M": 56.885,
+      "trainable_M": 56.885
+    },
+    {
+      "name": "rtdetr-x.pt",
+      "framework": "ultralytics",
+      "source": "/home/zhangyuming/Egoobjection/solution/weights/rtdetr-x.pt",
+      "nc": 80,
+      "variant": "pretrained_coco_head",
+      "total": 67467852,
+      "trainable": 67467852,
+      "total_M": 67.468,
+      "trainable_M": 67.468,
+      "trainable_note": "checkpoint tensors had requires_grad=False; trainable set equal to total"
+    },
+    {
+      "name": "rtdetr-x_nc10",
+      "framework": "ultralytics",
+      "source": "yaml from rtdetr-x.pt with nc=10",
+      "nc": 10,
+      "variant": "yaml_nc10",
+      "total": 67324002,
+      "trainable": 67324002,
+      "total_M": 67.324,
+      "trainable_M": 67.324
+    }
+  ]
+}
