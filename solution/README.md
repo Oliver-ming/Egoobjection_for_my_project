@@ -2,6 +2,16 @@
 
 Egocentric 10 类目标检测（COCO mAP@0.5:0.95）。共享约定见 [`CONVENTIONS.md`](CONVENTIONS.md)。
 
+## 最终提交
+
+文件：[`submissions/final_submission.csv`](submissions/final_submission.csv)（说明见 [`submissions/README.md`](submissions/README.md)）。
+
+- **Co-DINO Swin-L**，Objects365→COCO 权重，在 train+val 上训 12 轮，测试时用 `1333x800` 与 `1600x960`，各含原图和水平翻转。
+- **YOLO26x**，只在训练集上训 80 轮（1024），测试用 `imgsz=1280` 和 Ultralytics TTA。
+- 五路预测做 WBF：`conf_type=max`，`iou_thr=0.90`，权重 `1 1 1 1 3`。
+
+这套融合在只训训练集的 Co-DINO 上、用官方 pycocotools 评验证集，mAP@0.5:0.95 为 **0.906**。DINO Swin-L 只做了冒烟测试，没有进入提交。
+
 ## 目录结构
 
 ```
@@ -23,7 +33,7 @@ solution/
 - Python：`/home/zhangyuming/Egoobjection/solution/env/bin/python`（共享 uv 环境，**不要**新建 venv / `pip install`）。
 - 关键包版本：`torch 2.1.0+cu121`，`mmdet 3.3.0`，`mmcv 2.1.0`，`mmengine 0.10.7`，`ultralytics 8.4.160`。
 - Ultralytics 相关命令前设置：`export YOLO_AUTOINSTALL=False`。
-- 始终显式设置 `CUDA_VISIBLE_DEVICES`（本项目仅使用 GPU 0–3）。
+- 始终显式设置 `CUDA_VISIBLE_DEVICES`。
 
 ## 端到端复现
 
@@ -90,53 +100,43 @@ CUDA_VISIBLE_DEVICES=3 $PY ultra/predict_coco.py \
   --split val --imgsz 1024 --eval
 ```
 
-### 4. 测试集推理（含 TTA）
+### 4. 测试集推理与集成（与 `submissions/final_submission.csv` 一致）
 
 ```bash
-# 单尺度 test
-CUDA_VISIBLE_DEVICES=0,1,2,3 PORT=29920 bash mmdet/tools/dist_infer.sh \
-  mmdet/configs/codino_swinl_ego.py CKPT 4 test \
-  work_dirs/codino_swinl_ego/preds/test
-
-# TTA：多尺度 + flip → WBF
-CUDA_VISIBLE_DEVICES=0,1,2,3 PORT=29931 \
+# Co-DINO trainval 第 12 轮：1333 与 1600，原图 + 水平翻转
+CUDA_VISIBLE_DEVICES=0,1,2,3 \
   $PY mmdet/tools/tta_infer.py \
   --config mmdet/configs/codino_swinl_ego.py \
-  --checkpoint CKPT \
-  --ann ../resource/data/test.json \
-  --out-dir work_dirs/codino_swinl_ego/tta_test \
-  --scales 1333x800,1600x960,1920x1152 --flip --gpus 4 \
-  --method wbf --iou-thr 0.6 --conf-type max
+  --checkpoint work_dirs/codino_swinl_ego_trainval/epoch_12.pth \
+  --ann /home/zhangyuming/Egoobjection/resource/data/test.json \
+  --out-dir work_dirs/codino_swinl_ego_trainval/tta_test \
+  --scales 1333x800,1600x960 --flip --gpus 4 --port 29951
 
-# YOLO test（可选 --augment）
-CUDA_VISIBLE_DEVICES=3 $PY ultra/predict_coco.py \
+# YOLO26x：1280 + Ultralytics TTA
+export YOLO_AUTOINSTALL=False
+CUDA_VISIBLE_DEVICES=0 $PY ultra/predict_coco.py \
   --weights work_dirs/ultra/y26x_1024_train/weights/best.pt \
-  --split test --imgsz 1024 --out work_dirs/ultra/preds/y26x_test.json
-```
+  --split test --imgsz 1280 --augment --device 0 \
+  --out work_dirs/ultra/y26x_1024_train/preds/test_1280_tta.json
 
-### 5. 集成
-
-```bash
+# WBF。tta_infer 自己的 fused.json 用的是默认 IoU，不要用它。
 $PY tools/ensemble.py \
-  --preds work_dirs/codino_swinl_ego/tta_test/fused.json \
-           work_dirs/dino_swinl_ego/test.bbox.json \
-           work_dirs/ultra/preds/y26x_test.json \
-  --weights 2 1 1 \
-  --method wbf --iou-thr 0.6 --conf-type avg \
-  --out work_dirs/ensemble/test_fused.json
-```
+  --preds work_dirs/codino_swinl_ego_trainval/tta_test/1333x800_orig.json \
+          work_dirs/codino_swinl_ego_trainval/tta_test/1333x800_flip.json \
+          work_dirs/codino_swinl_ego_trainval/tta_test/1600x960_orig.json \
+          work_dirs/codino_swinl_ego_trainval/tta_test/1600x960_flip.json \
+          work_dirs/ultra/y26x_1024_train/preds/test_1280_tta.json \
+  --weights 1 1 1 1 3 \
+  --method wbf --iou-thr 0.9 --conf-type max --max-per-image 100 \
+  --out work_dirs/tune/test_fused_iou90.json
 
-### 6. 生成并校验提交
-
-```bash
 $PY tools/make_submission.py \
-  --pred work_dirs/ensemble/test_fused.json \
-  --out work_dirs/ensemble/submission.csv
-# 或仅校验：
-$PY tools/make_submission.py --validate-only work_dirs/ensemble/submission.csv
+  --pred work_dirs/tune/test_fused_iou90.json \
+  --out submissions/final_submission.csv \
+  --test /home/zhangyuming/Egoobjection/resource/data/test.json
 ```
 
-### 7. 资源与参数台账
+### 5. 资源与参数台账
 
 ```bash
 CUDA_VISIBLE_DEVICES="" YOLO_AUTOINSTALL=False \
@@ -152,7 +152,8 @@ CUDA_VISIBLE_DEVICES="" \
 
 | 文件 | 内容 |
 |---|---|
-| [`docs/technical_report.md`](docs/technical_report.md) | 技术报告草稿（中文，结果处为 `TODO(结果)`） |
+| [`docs/technical_report.md`](docs/technical_report.md) | 技术报告（中文） |
+| [`submissions/README.md`](submissions/README.md) | 最终提交文件与融合配方 |
 | [`docs/data_check.md`](docs/data_check.md) | 数据审计 |
 | [`docs/model_params.md`](docs/model_params.md) | 参数量 |
 | [`docs/resource_usage.md`](docs/resource_usage.md) | GPU / 训练时间（训练结束后重生成） |

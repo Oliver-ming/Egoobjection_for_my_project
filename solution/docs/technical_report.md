@@ -1,7 +1,7 @@
 # 技术报告（草稿）
 
 > EgoObjects 子集 · 10 类 egocentric 目标检测 · 主指标 COCO mAP@0.5:0.95  
-> 本文为可填结果的结构化草稿；凡需等训练/评测完成再写入的数字，均以 `TODO(结果)` 标明，**不臆造成绩**。
+> 分数均为 pycocotools 的 COCO mAP@0.5:0.95，与 `resource/eval.py` 一致。带「泄漏」的数字是模型在训练时见过验证集图像，只作记录，不用于选模。
 
 ---
 
@@ -68,10 +68,11 @@
 | 角色 | 模型 | 预训练 | 管线 |
 |---|---|---|---|
 | **主模型** | Co-DINO 5-scale Swin-L | Objects365 → COCO | MMDetection `mmdet/` |
-| 次要 / 集成 | DINO 5-scale Swin-L | COCO | MMDetection |
-| 快速多样成员 | YOLO26x | COCO（Ultralytics） | `ultra/` |
-| TTA | 多尺度 + 水平翻转 | — | `mmdet/tools/tta_infer.py` |
-| 融合 | WBF（默认 `conf_type=max` 用于同模型 TTA） | — | `tools/ensemble.py` |
+| 多样成员 | YOLO26x | COCO（Ultralytics） | `ultra/` |
+| TTA | 1333 与 1600，各加水平翻转 | — | `mmdet/tools/tta_infer.py` |
+| 融合 | WBF，`conf_type=max`，IoU 0.90，权重 1,1,1,1,3 | — | `tools/ensemble.py` |
+
+DINO Swin-L 的配置在 `mmdet/configs/dino_swinl_ego.py`，只做了冒烟测试，没有进入最终提交。
 
 预测统一为 COCO results JSON（原图像素 xywh，`category_id` 0..9，每图 ≤100 框，低阈值 ~0.001），再经 ensemble / `make_submission.py`。
 
@@ -79,12 +80,10 @@
 
 ## 4. 架构选择与理由
 
-1. **DETR 族 + 大规模预训练（Co-DINO / DINO）**  
+1. **DETR 族 + 大规模预训练（Co-DINO）**  
    - 第一人称数据视角非常规、运动模糊、尺度跨度大，但 **~80% 为大目标**，更吃表征与预训练，而非极致小目标 detector。  
    - Co-DINO 带协同混合训练头（query + ATSS + RPN/RoI），预训练强（O365→COCO）；**推理只用 query/DETR 头**（`eval_module='detr'`），辅助头仅训练期存在（见 `docs/model_params.md`）。  
-   - DINO Swin-L 作为同族、不同预训练与损失细节的成员，便于集成时提供相关但非同质的误差。
-
-2. **YOLO26x 作为快速多样成员**  
+2. **YOLO26x 作为多样成员**  
    - 吞吐高（单卡 ~5–6 min/epoch @1024）、实现路径独立（卷积 NMS 头 vs Transformer），与 DETR 错误模式互补。  
    - 使用裁剪后的 YOLO 标签；训练显式 AdamW（避免 `optimizer=auto` 中途切 MuSGD）。
 
@@ -154,45 +153,53 @@
 
 ## 7. 实验结果
 
-> 下列表格待训练与评测完成后填写。**禁止编造数字。**
+最终提交用的融合，在只训训练集的模型上评验证集为 **0.906**。组委会基线：Faster R-CNN 约 0.759，Deformable DETR 约 0.788。DINO Swin-L 没有做完整训练，不在下表里。
 
-### 7.1 单模型验证集（train-only 训练）
+### 7.1 单模型验证集（只训训练集）
 
 | 模型 | mAP | AP50 | AP75 | APs | APm | APl |
 |---|---:|---:|---:|---:|---:|---:|
-| Co-DINO Swin-L | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) |
-| DINO Swin-L | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) |
-| YOLO26x @1024 | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) |
+| Co-DINO Swin-L，第 12 轮，1333 | 0.884 | 0.979 | 0.952 | 0.801 | 0.718 | 0.902 |
+| YOLO26x @1024 | 0.860 | 0.975 | 0.926 | 0.749 | 0.729 | 0.875 |
+| YOLO26x @1280 + TTA | 0.887 | 0.981 | 0.949 | — | — | — |
 
-### 7.2 按类 AP（主模型）
+Co-DINO 验证曲线（1333）：第 1 / 4 / 8 / 12 轮为 0.739 / 0.854 / 0.876 / 0.884。第 5 轮起改为每卡 2 张图。YOLO 的 Ultralytics 自带指标在第 67 轮最高为 0.892，第 80 轮 0.891；上表是 pycocotools。1280 TTA 没有单独记下按尺度的 AP。
 
-| class | AP |
-|---|---:|
-| pillow … sofa | TODO(结果) |
+### 7.2 按类 AP（Co-DINO 第 12 轮，只训训练集）
 
-### 7.3 TTA 消融（Co-DINO）
+| pillow | box | book | bottle | chair | mug | door | shelf | plate | sofa |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| 0.903 | 0.858 | 0.884 | 0.835 | 0.869 | 0.899 | 0.894 | 0.890 | 0.870 | 0.934 |
+
+### 7.3 TTA 消融（Co-DINO 第 12 轮，只训训练集）
 
 | 设置 | mAP |
 |---|---:|
-| 单尺度 1333×800 | TODO(结果) |
-| + flip | TODO(结果) |
-| 多尺度 + flip + WBF(max) | TODO(结果) |
+| 1333×800 | 0.884 |
+| 1333×800 水平翻转 | 0.882 |
+| 1600×960 / 其翻转 | 0.881 / 0.879 |
+| 1920×1088 / 其翻转 | 0.877 / 0.874 |
+| 1333+1600，原图+翻转，WBF max、IoU 0.75 | 0.886 |
 
-### 7.4 集成消融
+单独提高测试分辨率没有超过 1333。1920 再融进后面的集成会把 0.902 拉到 0.901。
 
-| 成员 | mAP |
-|---|---:|
-| Co-DINO only | TODO(结果) |
-| + DINO | TODO(结果) |
-| + YOLO26x | TODO(结果) |
-| 全量 WBF | TODO(结果) |
+### 7.4 集成消融（只训训练集的权重，WBF，`conf_type=max`）
 
-### 7.5 train vs trainval
+| 成员 | IoU | mAP |
+|---|---:|---:|
+| Co-DINO 1333 原图 + 翻转 | 0.75 | 0.884 |
+| 再加 YOLO26x 1280 TTA，权重 1:1:2 | 0.75 | 0.901 |
+| 1333+1600 四路 + YOLO，权重 1:1:1:1:3 | 0.75 | 0.902 |
+| 同上 | 0.90 | **0.906** |
 
-| 模型 | train-only best val | trainval 同 epoch 协议 | 备注 |
+Soft-NMS、按图预过滤、以及 YOLO 的 1152/1408 或 multi-label，都没有超过 0.906。提交文件使用同一融合，但 Co-DINO 换成 train+val 的第 12 轮。
+
+### 7.5 train 与 trainval
+
+| 模型 | 只训训练集 | train+val | 备注 |
 |---|---:|---:|---|
-| Co-DINO | TODO(结果) | TODO(结果) | trainval 的 val mAP 泄漏，仅作参考 |
-| YOLO26x | TODO(结果) | TODO(结果) | 同上 |
+| Co-DINO 第 12 轮 | 0.884 | 0.909 | 0.909 含泄漏。第 4 / 8 轮泄漏分数为 0.868 / 0.898 |
+| YOLO26x | 0.860（1024，pycocotools） | 未训练 | Ultralytics 指标第 80 轮 0.891 |
 
 基线参考（组委会，非本方法）：Faster R-CNN ~0.759，Deformable DETR ~0.788。
 
@@ -210,15 +217,15 @@
 | YOLO11x（nc=10） | 56.885 | |
 | RT-DETR-X（nc=10） | 67.324 | |
 
-训练资源（**部分完成时快照**，结束前用 `tools/resource_report.py` 重生成 `docs/resource_usage.md`）：
+训练资源由日志时间戳汇总（不是 `resource_report.py` 的自动表；该脚本的早期快照已过时）：
 
-| run | GPUs | wall / GPU-h | 进度 | peak mem/GPU | best val mAP |
-|---|---:|---|---|---|---|
-| codino_swinl_ego | 3 | TODO(结果) | TODO(结果) | ~9.3 GiB（日志） | TODO(结果) |
-| y26x_1024_train | 1 | TODO(结果) | TODO(结果) | ~20.9 GiB | TODO(结果) |
-| dino_swinl_ego | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) | TODO(结果) |
+| run | GPUs | 墙钟 | GPU·时 | 峰值显存/卡 | 验证 mAP |
+|---|---:|---|---:|---|---|
+| codino_swinl_ego | 3 | 约 11.2 h（含中途改为每卡 2 张图） | 约 34 | 每卡 1 张图时 9.3 GiB；每卡 2 张图时约 19 GiB | 0.884 |
+| codino_swinl_ego_trainval | 4 | 约 7.9 h | 约 32 | 约 23 GiB（余量很小） | 0.909（泄漏） |
+| y26x_1024_train | 1 | 7.7 h | 7.7 | 约 21–23 GiB | 0.860（pycocotools，1024） |
 
-硬件：NVIDIA GeForce RTX 4090（本机 GPUs 0–3）。
+硬件：NVIDIA GeForce RTX 4090 24 GiB。正式训练用过 GPU 0–7；0–3 与 4–7 都在不同 NUMA 节点上，卡间无直连。
 
 ---
 
@@ -232,13 +239,12 @@
 
 ## 10. 局限与改进方向
 
-- 帧级划分导致 train/val/test 强相关；公开榜乐观，真实跨视频泛化未测。  
-- 小目标极少（~1.3%），高分辨率（1920 长边）收益不确定，可作为可选集成成员。  
-- 越界 / 全图外 GT 会轻微召回上限；未改官方 GT。  
-- Co-DINO 辅助头增加训练算力但不参与推理；可研究推理期蒸馏或关掉部分 aux。  
-- 集成权重、TTA 尺度集合、YOLO26 one-to-many vs one-to-one 头仍待系统消融（`TODO(结果)`）。  
-- 单卡 YOLO DDP 未在本环境充分验证。
+- 帧级划分导致 train/val/test 强相关；验证集可以代表测试集，但不能代表换一批视频后的泛化。
+- 小目标极少（约 1.3%）。把测试分辨率加到 1920 低于 1333，没有放进提交。
+- 越界和完全在图外的标注会轻微压低召回上限；评测仍用官方标注。
+- Co-DINO 的辅助头只在训练时使用。YOLO26 的端到端头在短程试验里比默认的 one-to-many 头低大约 4 个点，提交用默认头。
+- 1600 分辨率上从第 12 轮再微调 5 轮，单模型验证集只到 0.888，没有替换提交里的权重。
 
 ---
 
-*草稿版本与代码布局同步于 `solution/`；结果表在实验结束后一次性回填。*
+*与 `submissions/final_submission.csv` 对应的结果写于 2026-09-30。*

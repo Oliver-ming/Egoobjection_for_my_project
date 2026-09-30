@@ -1,6 +1,8 @@
 # 后续任务规划（交接用）
 
-> 写于 2026-09-24 22:40。接手者先读本文件，再读 `solution/CONVENTIONS.md`（硬性规则）。
+> **2026-09-30：方案已冻结。** 提交文件是 `solution/submissions/final_submission.csv`，配方见 `solution/submissions/README.md`。验证集 0.906。下文是当时的执行计划，不再继续加训。
+>
+> 写于 2026-09-24 22:40，**02:42 更新 GPU 安排**。接手者先读本文件，再读 `solution/CONVENTIONS.md`（硬性规则）。
 > 各流程细节不在此重复：`solution/README.md`、`ultra/README.md`、`mmdet/README_codino.md`、`mmdet/README_dino.md`、
 > `docs/data_check.md`、`docs/technical_report.md`（草稿，结果处为 `TODO(结果)`）。代码历史见 `git log`（仓库根 `/home/zhangyuming/Egoobjection`）。
 
@@ -8,7 +10,7 @@
 
 - 只用 uv 环境 `/home/zhangyuming/Embodied AI EgoObject Detection/env_embody_ai`（已软链为 `solution/env`），**不新建环境、不 pip 安装**（该环境同时被另一个训练任务使用）。
 - `/home/zhangyuming/Embodied AI EgoObject Detection/` 目录除环境外**一律不读不写**；基线已由用户在那边完成，这里不做基线。
-- GPU 只用 **0–3**；4–7 是用户另一个任务。
+- GPU：用户原定只用 0–3。09-25 02:35 起 **4–7 也可用**（原任务已停）。YOLO 仍独占 GPU 3。
 - 用户允许最多 **20 个 subagent** 并行；subagent **一律用 `grok-4.7-xhigh`**（用户要的 “fast” 版本不在可用列表里，已确认用这个）。
   写代码 / 审查 / 核验交给 subagent，主 agent 只做核心审核（坐标系、image_id/类别映射、提交格式、训练配置）和 GPU 调度。
   subagent 的 prompt 要自包含：先读 `CONVENTIONS.md`、明确分配的 GPU、禁止自行启动长时间训练、禁止 git 操作（由主 agent 提交）。
@@ -16,7 +18,28 @@
 - 与用户用中文沟通。Kaggle 上传由用户手动完成（需填姓名学号），我们只产出并校验 `submission.csv`。
 - `项目概览/项目要求.md` 在 git 里显示被修改，那是用户自己的改动，不要提交/还原。
 
-## 1. 当前状态（22:40）
+## 1. 当前状态（09-25 02:42 更新）
+
+09-25 02:35 用户要求用满显存，并允许使用空出来的 4–7。已做：
+
+- 在 GPU 4 上试过 Co-DINO `batch_size=2`：显存约 19.5 GB、1.35 s/iter，再加大就会顶满 24 GB。试跑已停，权重在 `work_dirs/codino_bs2_probe/`（可删）。
+- **train-only 从 `epoch_4.pth` 续上**（丢掉了第 5 轮前 400 iter），3 卡 × bs2，学习率仍是 5e-5（不在中途加大学习率）。日志改到 `logs/codino_swinl_ego_bs2.log`。每轮 1667 iter、约 1.64 s/iter、显存约 16–19 GB。损失从续上前的水平接着降（第 5 轮开头 ~20，梯度正常）。剩余约 8 轮，粗算 **~6.5 小时，09:00 前后结束**（日志里的 ETA 刚续上时偏低，以 iter 时间估算为准）。
+- **train+val 已提前开跑**（不用再等 train-only 结束）：GPU 4–7，4 卡 × bs2，lr 7e-5（按 bs16→bs8 做平方根缩放），11000 张 / 1375 iter，约 1.60 s/iter。日志 `logs/codino_trainval_bs2.log`，输出 `work_dirs/codino_swinl_ego_trainval/`。粗算 **~7.5 小时，10:00 前后结束**。GPU 5 显存约 23.4 GB，余量很小；若 OOM，用 `batch_size=1` 从最新 checkpoint `--resume`。
+- GPU 3 的 YOLO26x **没有动**。
+
+原「当前状态」表作废，以本节为准。监控：
+
+```bash
+cd /home/zhangyuming/Egoobjection/solution
+rg "coco/bbox_mAP:" logs/codino_swinl_ego_train.log logs/codino_swinl_ego_bs2.log | tail
+tail -c 400 logs/codino_swinl_ego_bs2.log
+tail -c 400 logs/codino_trainval_bs2.log
+cut -d, -f1,8,9 work_dirs/ultra/y26x_1024_train/results.csv | tail
+```
+
+崩溃续训：train-only 加 `--resume`（work_dir 不变，batch 仍用 `--cfg-options train_dataloader.batch_size=2`）；trainval 同理，并保留 `optim_wrapper.optimizer.lr=0.00007`。
+
+## 1b. 原状态记录（22:40，已被上一节取代）
 
 已完成并提交：公共工具（`tools/`：trainval 合并、数据检查、`coco_eval.py`、WBF `ensemble.py`、`make_submission.py`、参数量/资源统计）、
 三条流程（Co-DINO Swin-L、DINO Swin-L、Ultralytics YOLO26x/YOLO11x/RT-DETR-X）均冒烟通过、TTA 工具 `mmdet/tools/tta_infer.py`、文档草稿。
@@ -100,7 +123,7 @@ CUDA_VISIBLE_DEVICES=0,1,2 PORT=29810 nohup bash mmdet/tools/dist_train.sh \
 4. 集成调参（CPU，`tools/ensemble.py --gt val.json` 会直接打印输入/输出 AP）：Co-DINO(TTA) + YOLO(TTA) 的
    `--weights`（如 1:1、2:1、3:1）、`--iou-thr`（0.55–0.7）、`--conf-type`（avg / max / box_and_model_avg）、`--skip-box-thr`（0.001–0.05）。
    若集成不优于 Co-DINO 单模就不集成。用 train-only 的两个模型 test 预测按选定参数融合 → 备份提交 #3。
-5. 启动 Co-DINO trainval（~12.5 h，3 卡，至 09-26 ~00:00；与 train-only 同 lr/batch，结论可直接迁移）：
+5. **trainval 已在 09-25 02:40 启动**（见第 1 节，GPU 4–7，bs2，lr 7e-5），不要再开第二次。等它跑完用**最后一轮** checkpoint。若中途 OOM 或被停掉，按第 1 节续训。原先计划的启动命令作废：
 
    ```bash
    CUDA_VISIBLE_DEVICES=0,1,2 PORT=29811 nohup bash mmdet/tools/dist_train.sh \
